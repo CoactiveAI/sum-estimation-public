@@ -13,7 +13,7 @@ Computing exact sums over large embedding datasets (millions of vectors) is comp
 - **OurAlgorithm**: An adaptive sampler that selects a budgeted number of items per query.
 - **Combined**: Combines TopK and Random sampling (hybrid).
 
-Each method supports per-query evaluation and produces score estimates (`Z_hat`) under a variety of hyperparameter and estimator configurations.
+Each method supports per-query evaluation and produces score estimates under a variety of hyperparameter and estimator configurations.
 
 ---
 
