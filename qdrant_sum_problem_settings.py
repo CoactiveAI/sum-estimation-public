@@ -1,0 +1,325 @@
+from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
+from tqdm import tqdm
+from typing import List, Callable, Optional
+from time import sleep
+
+import math
+import numpy as np
+import random
+import torch
+import uuid
+
+from qdrant_client import models, QdrantClient
+from qdrant_client.http.models import (
+    HasIdCondition,
+    NamedVector,
+    QuantizationSearchParams,
+    ScoredPoint,
+    SearchParams,
+    SearchRequest,
+)
+
+from qdrant_helpers import (
+    batch_qdrant_search,
+    make_search_request,
+    max_levels_dict,
+    get_top_k_for_query,
+    get_top_k_with_level,
+    get_random_sample_for_query,
+    get_all_scores_for_query
+)
+from qdrant_client import QdrantClient, models
+from qdrant_client.models import SearchRequest, NamedVector, SearchParams, QuantizationSearchParams
+
+def is_list_of_uuids(id_list):
+    try:
+        return all(isinstance(uuid.UUID(str(i)), uuid.UUID) for i in id_list[:1])
+    except (ValueError, TypeError):
+        return False 
+
+
+class SumProblemSetting:
+    def __init__(
+        self, 
+        dataset_embedding_objects: List[EmbeddingObject],
+        query_embedding_objects: List[EmbeddingObject],
+        fn_for_nn_sims_calc: Callable,
+        collection_name: str,
+        vector_name: str,
+        qdrant: QdrantClient,
+        oversampling: float = 2.5,
+    ):
+        self.N_d = len(dataset_embedding_objects)
+        self.N_q = len(query_embedding_objects)
+        self.dim = len(query_embedding_objects[0].embedding) if query_embedding_objects[0].embedding is not None else None
+        self.fn_for_nn_sims_calc = fn_for_nn_sims_calc
+
+        self.query_ids = [obj.image_id for obj in query_embedding_objects]
+        self.query_embeddings = [obj.embedding for obj in query_embedding_objects]
+        self.dataset_embedding_objects = dataset_embedding_objects
+
+        self.collection_name = collection_name
+        self.vector_name = vector_name
+        self.qdrant = qdrant
+        self.oversampling = oversampling
+        self.current_level = 0
+        self.max_level = None
+
+        self.is_list_of_ids_uuids = is_list_of_uuids(self.query_ids)
+
+    def GetTopK(self, k: int) -> List[List[EmbeddingObjectWithSim]]:
+        return [
+            get_top_k_for_query(
+                qid=qi,
+                qe=qe,
+                k=k,
+                collection_name=self.collection_name,
+                vector_name=self.vector_name,
+                is_uuid=self.is_list_of_ids_uuids,
+                oversampling=self.oversampling,
+                fn_for_nn_sims_calc=self.fn_for_nn_sims_calc
+            )
+            for qi, qe in zip(self.query_ids, self.query_embeddings)
+        ]
+
+    def GetTopKWithLevel(self, k: int, l: int) -> List[List[EmbeddingObjectWithSim]]:
+        return [
+            get_top_k_with_level(
+                qid=qi,
+                qe=qe,
+                k=k,
+                current_level=self.current_level,
+                max_level=l,
+                collection_name=self.collection_name,
+                vector_name=self.vector_name,
+                is_uuid=self.is_list_of_ids_uuids,
+                oversampling=self.oversampling,
+                fn_for_nn_sims_calc=self.fn_for_nn_sims_calc
+            )
+            for qi, qe in zip(self.query_ids, self.query_embeddings)
+        ]
+
+    def GetRandomSample(self, m: int) -> List[List[EmbeddingObjectWithSim]]:
+        return [
+            get_random_sample_for_query(
+                qe=qe,
+                m=m,
+                dataset_embedding_objects=self.dataset_embedding_objects,
+                collection_name=self.collection_name,
+                vector_name=self.vector_name,
+                oversampling=self.oversampling,
+                fn_for_nn_sims_calc=self.fn_for_nn_sims_calc
+            )
+            for qe in self.query_embeddings
+        ]
+
+    def GetMaxSims(self) -> List[float]:
+        queries = [
+            make_search_request(
+                vector=qe,
+                vector_name=self.vector_name,
+                k=1,
+                oversampling=self.oversampling,
+                must=None,
+                must_not=[models.HasIdCondition(has_id=self.query_ids)] if self.is_list_of_ids_uuids else []
+            )
+            for qe in self.query_embeddings
+        ]
+        results = batch_qdrant_search(self.collection_name, queries, debug_tag="GetMaxSims")
+        return [self.fn_for_nn_sims_calc(batch[0].score) for batch in results]
+
+    def GetAllScores(self, qid: str, qe: List[float], ids: List[str]) -> List[float]:
+        return get_all_scores_for_query(
+            qid=qid,
+            qe=qe,
+            ids=ids,
+            collection_name=self.collection_name,
+            vector_name=self.vector_name,
+            oversampling=self.oversampling,
+            fn_for_nn_sims_calc=self.fn_for_nn_sims_calc
+        )
+
+    def GetNNSims(self, selected_embedding_objects_with_sims: List[List[EmbeddingObjectWithSim]]) -> List[List[float]]:
+        return [[obj.nn_sim_to_q for obj in objs] for objs in selected_embedding_objects_with_sims]
+
+    def SetNewLevel(self, l: int) -> None:
+        self.current_level = l
+        self.max_level = max_levels_dict[self.collection_name][f"level_{l}"]
+
+    def GetN_d(self) -> int:
+        return self.N_d
+
+    def GetN_q(self) -> int:
+        return self.N_q
+    
+
+########################################################
+
+class KDE_Image(SumProblemSetting):
+    def __init__(
+        self, 
+        dataset_embedding_objects: List[EmbeddingObject], 
+        query_embedding_objects: List[EmbeddingObject],
+        qdrant: QdrantClient,
+        oversampling: float = 2.5,       
+    ):
+        super().__init__(
+            dataset_embedding_objects = dataset_embedding_objects, 
+            query_embedding_objects = query_embedding_objects, 
+            fn_for_nn_sims_calc = self.fn_for_nn_sims_calc,
+            collection_name = "open-images_resnet-50",
+            vector_name = "abs",
+            qdrant = qdrant,
+            oversampling = oversampling,
+        )
+
+    def fn_for_nn_sims_calc(self, score:float) -> Callable:
+        return -score**2
+
+    def f_vals(self, bandwidth: np.float64, selected_embedding_objects: List[List[EmbeddingObject]] = None) -> List[List[np.float64]]:
+        f_vals_per_query = []
+
+        nn_sims = self.GetNNSims(selected_embedding_objects)
+        max_sims = self.GetMaxSims()
+
+        for q_idx in range(self.N_q):
+            nn_sims_to_q_scaled = np.array(nn_sims[q_idx]) - max_sims[q_idx]
+            f_vals = np.exp(nn_sims_to_q_scaled / (2 * (bandwidth**2)), dtype=np.float64)
+            f_vals_per_query.append(f_vals.tolist())
+            
+        return f_vals_per_query
+
+class Softmax_Image(SumProblemSetting):
+    def __init__(
+        self, 
+        dataset_embedding_objects: List[EmbeddingObject], 
+        query_embedding_objects: List[EmbeddingObject],
+        qdrant: QdrantClient,
+        oversampling: float = 2.5,
+    ):
+        super().__init__(
+            dataset_embedding_objects = dataset_embedding_objects, 
+            query_embedding_objects = query_embedding_objects, 
+            fn_for_nn_sims_calc = self.fn_for_nn_sims_calc,
+            collection_name = "open-images_clip_vit_l14_336",
+            vector_name = "unit",
+            qdrant = qdrant,
+            oversampling = oversampling,            
+        )
+
+    def fn_for_nn_sims_calc(self, score:float) -> Callable:
+        return score
+
+    def f_vals(self, temperature: np.float64, selected_embedding_objects: List[List[EmbeddingObject]] = None) -> List[List[np.float64]]:
+        f_vals_per_query = []
+
+        nn_sims = self.GetNNSims(selected_embedding_objects)
+        max_sims = self.GetMaxSims()
+
+        for q_idx in range(self.N_q):
+            nn_sims_to_q_scaled = np.array(nn_sims[q_idx]) - max_sims[q_idx]
+            f_vals = np.exp(nn_sims_to_q_scaled / temperature, dtype=np.float64)
+            f_vals_per_query.append(f_vals.tolist())
+            
+        return f_vals_per_query
+
+class BallCounting_Image(SumProblemSetting):
+    def __init__(
+        self, 
+        dataset_embedding_objects: List[EmbeddingObject], 
+        query_embedding_objects: List[EmbeddingObject],
+        qdrant: QdrantClient,
+        oversampling: float = 2.5,        
+    ):
+        super().__init__(
+            dataset_embedding_objects = dataset_embedding_objects, 
+            query_embedding_objects = query_embedding_objects, 
+            fn_for_nn_sims_calc = self.fn_for_nn_sims_calc,
+            collection_name = "open-images_resnet-50",
+            vector_name = "abs",
+            qdrant = qdrant,
+            oversampling = oversampling,
+        )
+
+    def fn_for_nn_sims_calc(self, score:float) -> Callable:
+        return -score
+
+    def f_vals(self, r: float = None, selected_embedding_objects: List[List[EmbeddingObject]] = None) -> List[List[np.float64]]:
+        f_vals_per_query = []
+
+        nn_sims = self.GetNNSims(selected_embedding_objects)
+
+        for q_idx in range(self.N_q):
+            nn_sims_to_q = np.abs(np.array(nn_sims[q_idx]))
+            f_vals = (nn_sims_to_q <= r).astype(int)
+            f_vals_per_query.append(f_vals.tolist())
+            
+        return f_vals_per_query    
+    
+
+class KDE_Text(SumProblemSetting):
+    def __init__(
+        self, 
+        dataset_embedding_objects: List[EmbeddingObject], 
+        query_embedding_objects: List[EmbeddingObject],
+        qdrant: QdrantClient,
+        oversampling: float = 2.5,       
+    ):
+        super().__init__(
+            dataset_embedding_objects = dataset_embedding_objects, 
+            query_embedding_objects = query_embedding_objects, 
+            fn_for_nn_sims_calc = self.fn_for_nn_sims_calc,
+            collection_name = "amazon-reviews_distilbert",
+            vector_name = "abs",
+            qdrant = qdrant,
+            oversampling = oversampling,
+        )
+
+    def fn_for_nn_sims_calc(self, score:float) -> Callable:
+        return -score**2
+
+    def f_vals(self, bandwidth: np.float64, selected_embedding_objects: List[List[EmbeddingObject]] = None) -> List[List[np.float64]]:
+        f_vals_per_query = []
+
+        nn_sims = self.GetNNSims(selected_embedding_objects)
+        max_sims = self.GetMaxSims()
+
+        for q_idx in range(self.N_q):
+            nn_sims_to_q_scaled = np.array(nn_sims[q_idx]) - max_sims[q_idx]
+            f_vals = np.exp(nn_sims_to_q_scaled / (2 * (bandwidth**2)), dtype=np.float64)
+            f_vals_per_query.append(f_vals.tolist())
+            
+        return f_vals_per_query
+
+class BallCounting_Text(SumProblemSetting):
+    def __init__(
+        self, 
+        dataset_embedding_objects: List[EmbeddingObject], 
+        query_embedding_objects: List[EmbeddingObject],
+        qdrant: QdrantClient,
+        oversampling: float = 2.5,        
+    ):
+        super().__init__(
+            dataset_embedding_objects = dataset_embedding_objects, 
+            query_embedding_objects = query_embedding_objects, 
+            fn_for_nn_sims_calc = self.fn_for_nn_sims_calc,
+            collection_name = "amazon-reviews_distilbert",
+            vector_name = "abs",
+            qdrant = qdrant,
+            oversampling = oversampling,
+        )
+
+    def fn_for_nn_sims_calc(self, score:float) -> Callable:
+        return -score
+
+    def f_vals(self, r: float = None, selected_embedding_objects: List[List[EmbeddingObject]] = None) -> List[List[np.float64]]:
+        f_vals_per_query = []
+
+        nn_sims = self.GetNNSims(selected_embedding_objects)
+
+        for q_idx in range(self.N_q):
+            nn_sims_to_q = np.abs(np.array(nn_sims[q_idx]))
+            f_vals = (nn_sims_to_q <= r).astype(int)
+            f_vals_per_query.append(f_vals.tolist())
+            
+        return f_vals_per_query
