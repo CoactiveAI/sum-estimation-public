@@ -1,6 +1,6 @@
 # SumEstimation
 
-**SumEstimation** is a framework for estimating the sum of scores across large-scale embedding datasets using a variety of sampling strategies. It is designed to support both approximate and hybrid estimation techniques across multiple similarity functions (KDE, Softmax, Ball Counting, Sigmoid) and dataset types (image or text embeddings).
+**SumEstimation** is a framework for estimating the sum of scores across large-scale embedding datasets using a variety of sampling strategies. It is designed to support both approximate and hybrid estimation techniques across multiple similarity functions (KDE, Softmax) and dataset types (image or text embeddings).
 
 ## Motivation
 
