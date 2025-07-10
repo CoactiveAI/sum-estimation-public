@@ -25,6 +25,7 @@ Clone the repository and install the required dependencies:
 git clone https://github.com/your-org/sum-estimation-ext.git
 cd sum-estimation-ext
 pip install -r requirements.txt
+```
 
 ---
 
