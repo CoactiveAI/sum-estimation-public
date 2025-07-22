@@ -4,7 +4,7 @@ import numpy as np
 from qdrant_client import QdrantClient, models
 
 from my_datasets import Dataset
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
+from data_classes import EmbeddingObject, EmbeddingObjectWithSim
 from qdrant_helpers import (batch_qdrant_search, collections_dict,
                             get_all_scores_for_query,
                             get_random_sample_for_query, get_top_k_for_query,

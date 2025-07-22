@@ -4,7 +4,7 @@ from time import time
 
 import numpy as np
 
-from qdrant_data_classes import EmbeddingObject
+from data_classes import EmbeddingObject
 from qdrant_sum_problem_settings import SumProblemSetting
 
 MAX_RARITY_IN_VECTOR_DB = 40

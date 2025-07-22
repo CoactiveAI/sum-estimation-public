@@ -7,6 +7,7 @@ experiment_results_path = settings.EXPERIMENT_RESULTS_PATH
 plot_format = "pdf"
 
 
+# TODO: make this into a function
 alg_to_color = {"our": "b",
                    "topk": "r",
                    "random": "g",
