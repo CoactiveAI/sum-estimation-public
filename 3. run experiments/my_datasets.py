@@ -79,8 +79,7 @@ class Dataset_Image_KDE(Dataset):
         segment = 'train'
 
         dataset_embedding_objects = []
-        # for idx in tqdm(range(200)):
-        for idx in tqdm(range(2)):
+        for idx in tqdm(range(200)):
             embeddings_path = f"s3://coactive-ml-rnd/SumEstimationExperiments/OI_train_{encoder}_abs/{idx}"
             spark_df = spark.read.format("delta").option("header", "true").load(embeddings_path)
             spark_df = spark_df.repartition(sc.defaultParallelism).cache()
@@ -108,8 +107,7 @@ class Dataset_Image_Softmax(Dataset):
         segment = 'train'
 
         dataset_embedding_objects = []
-        # for idx in tqdm(range(200)):
-        for idx in tqdm(range(2)):
+        for idx in tqdm(range(200)):
             embeddings_path = f"s3://coactive-ml-rnd/SumEstimationExperiments/OI_train_{encoder}/{idx}"
             spark_df = spark.read.format("delta").option("header", "true").load(embeddings_path)
             spark_df = spark_df.repartition(sc.defaultParallelism).cache()
@@ -139,8 +137,7 @@ class Dataset_Image_BallCounting(Dataset):
         segment = 'train'
 
         dataset_embedding_objects = []
-        # for idx in tqdm(range(200)):
-        for idx in tqdm(range(2)):
+        for idx in tqdm(range(200)):
             embeddings_path = f"s3://coactive-ml-rnd/SumEstimationExperiments/OI_train_{encoder}_abs/{idx}"
             spark_df = spark.read.format("delta").option("header", "true").load(embeddings_path)
             spark_df = spark_df.repartition(sc.defaultParallelism).cache()
@@ -172,8 +169,7 @@ class Dataset_Text_KDE(Dataset):
                 print(f"Failed at {file_lo}: {e}")
                 return []
 
-        # file_offsets = list(range(0, 10000000, 5000))
-        file_offsets = list(range(0, 10000, 5000))
+        file_offsets = list(range(0, 10000000, 5000))
         results = Parallel(n_jobs=-1)(
             delayed(load_and_create_objects)(file_lo) for file_lo in tqdm(file_offsets)
         )
@@ -207,8 +203,7 @@ class Dataset_Text_BallCounting(Dataset):
                 print(f"Failed at {file_lo}: {e}")
                 return []
 
-        # file_offsets = list(range(0, 10000000, 5000))
-        file_offsets = list(range(0, 10000, 5000))
+        file_offsets = list(range(0, 10000000, 5000))
         results = Parallel(n_jobs=-1)(
             delayed(load_and_create_objects)(file_lo) for file_lo in tqdm(file_offsets)
         )
