@@ -1,3 +1,4 @@
 torch
 tqdm
+s3fs
 qdrant-client==1.12.0

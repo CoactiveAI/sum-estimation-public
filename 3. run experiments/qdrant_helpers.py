@@ -1,4 +1,4 @@
-from typing import Callable, List, Dict, Optional
+from typing import Callable, List
 
 from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
 from qdrant_client import QdrantClient
@@ -6,14 +6,12 @@ from qdrant_client import QdrantClient
 import numpy as np
 from qdrant_client import models
 from qdrant_client.http.models import (
-    HasIdCondition,
     NamedVector,
     QuantizationSearchParams,
-    ScoredPoint,
     SearchParams,
     SearchRequest,
 )
-from time import sleep, time
+from time import sleep
 from typing import List
 from tqdm import tqdm
 
@@ -29,24 +27,22 @@ qdrant_client_params = {
 qdrant = QdrantClient(**qdrant_client_params)
 
 
-# qdrant = get_qdrant()
-
 max_levels_dict = {
-    "open-images_resnet-50": {
+    settings.COLLECTION_NAME["open-images_resnet-50"]: {
         f'level_{i}': v for i, v in enumerate([24, 24, 25, 22, 24, 22, 24, 24, 28, 25])
     },
-    "open-images_clip_vit_l14_336": {
+    settings.COLLECTION_NAME["open-images_clip_vit_l14_336"]: {
         f'level_{i}': v for i, v in enumerate([21, 26, 25, 24, 24, 25, 23, 25, 24, 22])
     },
-    "amazon-reviews_distilbert": {
+    settings.COLLECTION_NAME["amazon-reviews_distilbert"]: {
         f'level_{i}': v for i, v in enumerate([28, 23, 23, 23, 23, 27, 25, 24, 26, 22])
     }
 }
 
 collections_dict = {
-    "open-images_resnet-50":{'vector_name': 'abs', 'is_list_of_ids_uuids': True},
-    "open-images_clip_vit_l14_336":{'vector_name': 'unit', 'is_list_of_ids_uuids': False},
-    "amazon-reviews_distilbert":{'vector_name': 'abs', 'is_list_of_ids_uuids': True},
+    settings.COLLECTION_NAME["open-images_resnet-50"]:{'vector_name': 'abs1', 'is_list_of_ids_uuids': True},
+    settings.COLLECTION_NAME["open-images_clip_vit_l14_336"]:{'vector_name': 'unit', 'is_list_of_ids_uuids': False},
+    settings.COLLECTION_NAME["amazon-reviews_distilbert"]:{'vector_name': 'abs', 'is_list_of_ids_uuids': True},    
 }
 
 
@@ -60,7 +56,7 @@ def make_search_request(
     must_not=None
 ) -> SearchRequest:
     return SearchRequest(
-        vector=NamedVector(name=vector_name, vector=vector),
+        vector=NamedVector(name=vector_name, vector=list(vector)),
         filter=models.Filter(
             must=must or [],
             must_not=must_not or []
@@ -84,6 +80,7 @@ def batch_qdrant_search(
     debug_tag: str = ""
 ):
     results = []
+    # for chunk in tqdm(range(0, len(queries), batch_chunk)):
     for chunk in range(0, len(queries), batch_chunk):
         for attempt in range(retries):
             try:
@@ -131,7 +128,7 @@ def get_top_k_with_level(
     vector_name: str,
     is_uuid: bool,
     oversampling: float,
-    fn_for_nn_sims_calc: Callable
+    fn_for_nn_sims_calc: Callable,
 ) -> List[List[EmbeddingObjectWithSim]]:
     queries = [
         make_search_request(
@@ -181,16 +178,15 @@ def get_all_scores_for_query(
     oversampling: float,
     fn_for_nn_sims_calc: Callable
 ) -> List[float]:
-    filtered_ids = [id_ for id_ in ids if id_ != qid]
     queries = [
         make_search_request(
             vector=qe,
             vector_name=vector_name,
             k=500,
             oversampling=oversampling,
-            must=[models.HasIdCondition(has_id=filtered_ids[start:start+500])]
+            must=[models.HasIdCondition(has_id=ids[start:start+500])]
         )
-        for start in range(0, len(filtered_ids), 500)
+        for start in range(0, len(ids), 500)
     ]
     results = batch_qdrant_search(collection_name, queries, debug_tag=f"AllScores(qid={qid})")
-    return [fn_for_nn_sims_calc(r.score) for batch in results for r in batch]
+    return [EmbeddingObjectWithSim(EmbeddingObject(r.id), fn_for_nn_sims_calc(r.score)) for batch in results for r in batch]
