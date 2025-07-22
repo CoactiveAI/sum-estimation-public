@@ -194,3 +194,9 @@ for q in range(1):
         pd.DataFrame(results_true_sum[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_true_sum/{QUERY_ID}.parquet")
         pd.DataFrame(results_recall_exact[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_exact/{QUERY_ID}.parquet")
         pd.DataFrame(results_recall_qdrant[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_qdrant/{QUERY_ID}.parquet")
+
+        results_sum_estimates[sum_problem_setting] = []
+        results_time_estimates[sum_problem_setting] = []
+        results_true_sum[sum_problem_setting] = []
+        results_recall_exact[sum_problem_setting] = []
+        results_recall_qdrant[sum_problem_setting] = []
