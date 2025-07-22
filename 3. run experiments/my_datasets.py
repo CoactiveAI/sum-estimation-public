@@ -1,3 +1,5 @@
+from typing import Self
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -32,7 +34,7 @@ class Dataset:
     def _get_exact_recall(self) -> pd.DataFrame:
         return pd.read_parquet(self.exact_recall_file)
     
-    def copy(self) -> Dataset:
+    def copy(self) -> Self:
         # Create a new instance without triggering __init__
         new_obj = self.__class__.__new__(self.__class__)
 
