@@ -1,22 +1,13 @@
+from time import sleep
 from typing import Callable, List
 
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
-from qdrant_client import QdrantClient
-
 import numpy as np
-from qdrant_client import models
-from qdrant_client.http.models import (
-    NamedVector,
-    QuantizationSearchParams,
-    SearchParams,
-    SearchRequest,
-)
-from time import sleep
-from typing import List
-from tqdm import tqdm
+from qdrant_client import QdrantClient, models
+from qdrant_client.http.models import (NamedVector, QuantizationSearchParams,
+                                       SearchParams, SearchRequest)
 
 from config import settings
-
+from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
 
 qdrant_client_params = {
     "url": settings.QDRANT_HOST,

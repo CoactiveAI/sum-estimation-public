@@ -2,11 +2,11 @@ from typing import Self
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from joblib import Parallel, delayed
+from tqdm import tqdm
 
-from qdrant_data_classes import EmbeddingObject
 from config import settings
+from qdrant_data_classes import EmbeddingObject
 
 
 class Dataset:

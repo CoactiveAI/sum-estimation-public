@@ -1,37 +1,15 @@
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
-from my_datasets import Dataset
-from tqdm import tqdm
-from typing import List, Callable, Optional
-from time import sleep
+from typing import Callable, List
 
-import math
 import numpy as np
-import random
-import torch
-import uuid
-
-from qdrant_client import models, QdrantClient
-from qdrant_client.http.models import (
-    HasIdCondition,
-    NamedVector,
-    QuantizationSearchParams,
-    ScoredPoint,
-    SearchParams,
-    SearchRequest,
-)
-
-from qdrant_helpers import (
-    batch_qdrant_search,
-    collections_dict,
-    make_search_request,
-    max_levels_dict,
-    get_top_k_for_query,
-    get_top_k_with_level,
-    get_random_sample_for_query,
-    get_all_scores_for_query
-)
 from qdrant_client import QdrantClient, models
-from qdrant_client.models import SearchRequest, NamedVector, SearchParams, QuantizationSearchParams
+
+from my_datasets import Dataset
+from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
+from qdrant_helpers import (batch_qdrant_search, collections_dict,
+                            get_all_scores_for_query,
+                            get_random_sample_for_query, get_top_k_for_query,
+                            get_top_k_with_level, make_search_request,
+                            max_levels_dict)
 
 
 class SumProblemSetting:

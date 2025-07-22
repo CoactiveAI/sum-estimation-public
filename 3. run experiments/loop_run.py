@@ -1,24 +1,22 @@
+# !pip install -r requirements.txt
+
 import random
-from time import time
-import os
-import torch
 from dataclasses import dataclass
 
 import pandas as pd
 from tqdm import tqdm
-from qdrant_helpers import qdrant
-from config import settings
 
-from qdrant_sum_problem_settings import SumProblemSetting, KDE_Image, Softmax_Image, BallCounting_Image, KDE_Text, BallCounting_Text
-from qdrant_sum_estimation_algorithm import SumEstimationAlgorithm, TopK, RandomSample, Combined, OurAlgorithm
-from my_datasets import (
-    Dataset,
-    Dataset_Image_KDE, 
-    Dataset_Image_Softmax,
-    Dataset_Image_BallCounting,
-    Dataset_Text_KDE,
-    Dataset_Text_BallCounting
-)
+from config import settings
+from my_datasets import (Dataset, Dataset_Image_BallCounting,
+                         Dataset_Image_KDE, Dataset_Image_Softmax,
+                         Dataset_Text_BallCounting, Dataset_Text_KDE)
+from qdrant_helpers import qdrant
+from qdrant_sum_estimation_algorithm import (Combined, OurAlgorithm,
+                                             RandomSample,
+                                             SumEstimationAlgorithm, TopK)
+from qdrant_sum_problem_settings import (BallCounting_Image, BallCounting_Text,
+                                         KDE_Image, KDE_Text, Softmax_Image,
+                                         SumProblemSetting)
 
 # Hyperparameter domains
 k_values_our = [25, 50, 100, 200]

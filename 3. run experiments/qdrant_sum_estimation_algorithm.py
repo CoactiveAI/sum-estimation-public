@@ -1,12 +1,11 @@
 
-from typing import List, Tuple
-import numpy as np
-import pandas as pd
-import torch
 from dataclasses import dataclass
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
-from qdrant_sum_problem_settings import SumProblemSetting
 from time import time
+
+import numpy as np
+
+from qdrant_data_classes import EmbeddingObject
+from qdrant_sum_problem_settings import SumProblemSetting
 
 MAX_RARITY_IN_VECTOR_DB = 40
 

@@ -1,6 +1,7 @@
-from typing import Optional, Callable, List, Dict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
 import numpy as np
+
 
 @dataclass
 class EmbeddingObject:
