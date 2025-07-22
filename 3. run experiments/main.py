@@ -87,7 +87,7 @@ results_recall_qdrant = {setting: [] for setting in sum_problem_settings}
 
 ################################################
 
-for q in range(1):
+for q in range(100):
     current_level = q%10
     oversampling = 2.5
 
