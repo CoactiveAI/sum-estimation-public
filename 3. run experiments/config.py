@@ -11,7 +11,7 @@ class Settings:
         "amazon-reviews_distilbert": "SEPub_AR_10M_bert"
     }
 
-    RESULTS_PATH = "s3://coactive-ml-rnd/SumEstimationExperiments/github_results_july22_run2"
+    RESULTS_PATH = "s3://coactive-ml-rnd/SumEstimationExperiments/github_results_july22_run3"
 
 
 settings = Settings()

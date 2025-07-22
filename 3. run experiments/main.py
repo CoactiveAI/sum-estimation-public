@@ -1,4 +1,4 @@
-# !pip install -r requirements.txt
+!pip install -r requirements.txt
 
 import random
 from dataclasses import dataclass
@@ -189,11 +189,12 @@ for q in range(1):
                     "topk": recall_qdrant[1]                
             })
 
-        pd.DataFrame(results_sum_estimates[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_sum_estimates/{QUERY_ID}.parquet")
-        pd.DataFrame(results_time_estimates[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_time_estimates/{QUERY_ID}.parquet")
-        pd.DataFrame(results_true_sum[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_true_sum/{QUERY_ID}.parquet")
-        pd.DataFrame(results_recall_exact[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_exact/{QUERY_ID}.parquet")
-        pd.DataFrame(results_recall_qdrant[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_qdrant/{QUERY_ID}.parquet")
+        QUERY_ID_filename = QUERY_ID.strip("/").replace("/", "_")
+        pd.DataFrame(results_sum_estimates[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_sum_estimates/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_time_estimates[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_time_estimates/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_true_sum[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_true_sum/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_recall_exact[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_exact/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_recall_qdrant[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_qdrant/{QUERY_ID_filename}.parquet")
 
         results_sum_estimates[sum_problem_setting] = []
         results_time_estimates[sum_problem_setting] = []
