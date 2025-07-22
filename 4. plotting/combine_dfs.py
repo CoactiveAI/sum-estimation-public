@@ -32,28 +32,16 @@ for name in sum_problem_setting_names:
 
 fs = s3fs.S3FileSystem(anon=False)
 
-for dir in tqdm(results_dir_paths[5:10]):
+for dir in tqdm(results_dir_paths):
     full_dir_path = f"{EXPERIMENT_RESULTS_PATH}/{dir}/"
-    if "softmax" in full_dir_path:
-        paths = [obj for obj in fs.find(full_dir_path)]
-        dfs = []
-        for path in paths:
-            try:
-                with fs.open(path, 'rb') as f:
-                    df = pd.read_parquet(f)
-                dfs.append(df)
-            except Exception as e:
-                print(f"Failed to read {path}: {e}")
-
-    else:
-        paths = [obj.path for obj in dbutils.fs.ls(full_dir_path)]
-        dfs = []
-        for path in paths:
-            try:
-                df = pd.read_parquet(path)
-                dfs.append(df)
-            except Exception as e:
-                print(f"Failed to read {path}: {e}")
+    paths = [obj.path for obj in dbutils.fs.ls(full_dir_path)]
+    dfs = []
+    for path in paths:
+        try:
+            df = pd.read_parquet(path)
+            dfs.append(df)
+        except Exception as e:
+            print(f"Failed to read {path}: {e}")
     
     if dfs:  # Proceed only if at least one DataFrame was loaded
         df_all = pd.concat(dfs, ignore_index=True)
