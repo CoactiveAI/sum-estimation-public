@@ -13,7 +13,7 @@ for combination in settings.TASK_DATA_COMBINATIONS:
 
     qidlevel_to_true_topk = {}
     qidlevel_maxk = {}
-    df = pd.read_parquet(f"{experiment_results_path}/{data}_{task}_exact_recall.parquet")
+    df = pd.read_parquet(f"{experiment_results_path}/{data}_{task}_recall_exact.parquet")
     print(df.columns)
     for row in df.itertuples():
         qid = row[1] # 0th column is index
@@ -28,7 +28,7 @@ for combination in settings.TASK_DATA_COMBINATIONS:
 
 
     klevel_to_recall = {} 
-    df = pd.read_parquet(f"{experiment_results_path}/{data}_{task}_qdrant_recall.parquet")
+    df = pd.read_parquet(f"{experiment_results_path}/{data}_{task}_recall_qdrant.parquet")
     print(df.columns)
     for row in df.itertuples():
         qid = row[1] # 0th column is index
