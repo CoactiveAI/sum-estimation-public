@@ -36,9 +36,9 @@ If you use this repository in your work, please cite the paper or contact us via
 For questions, feedback, or contributions:
 
 Steve Mussmann
-steve@coactive.ai
+mussmann@gatech.edu
 
 Mehul Smriti Raje
-mehul@coactive.ai
+mehul@coactive.ai, mehul.raje@gmail.com
 
 
