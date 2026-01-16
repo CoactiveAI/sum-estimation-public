@@ -22,8 +22,7 @@ Each method supports per-query evaluation and produces score estimates under a v
 Clone the repository and install the required dependencies:
 
 ```bash
-git clone https://github.com/your-org/sum-estimation-ext.git
-cd sum-estimation-ext
+git clone https://github.com/your-org/sum-estimation-public.git
 pip install -r requirements.txt
 ```
 
