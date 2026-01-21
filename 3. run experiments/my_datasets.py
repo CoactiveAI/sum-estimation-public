@@ -6,7 +6,7 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 
 from config import settings
-from qdrant_data_classes import EmbeddingObject
+from data_classes import EmbeddingObject
 
 
 class Dataset:

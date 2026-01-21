@@ -5,12 +5,14 @@ class Settings:
     QDRANT_PORT = 443
     QDRANT_TIMEOUT = 10000
 
+    # TODO: change up collection names when we migrate
     COLLECTION_NAME = {
         "open-images_resnet-50": "SEPub_OI_train8M_resnet_50",
         "open-images_clip_vit_l14_336": "SEPub_OI_train8M_clip_vit_normalised",
         "amazon-reviews_distilbert": "SEPub_AR_10M_bert"
     }
 
+    # TODO: change this to a a public URL
     RESULTS_PATH = "s3://coactive-ml-rnd/SumEstimationExperiments/github_results_july22_run3"
 
 

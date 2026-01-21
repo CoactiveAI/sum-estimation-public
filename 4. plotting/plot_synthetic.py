@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+# TODO: make this into a function
 class SyntheticTask:
     def __init__(self,n,seed,max_k = 1000):
         self.n = n

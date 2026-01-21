@@ -7,16 +7,14 @@ import pandas as pd
 from tqdm import tqdm
 
 from config import settings
-from my_datasets import (Dataset, Dataset_Image_BallCounting,
+from my_datasets import (Dataset_Image_BallCounting,
                          Dataset_Image_KDE, Dataset_Image_Softmax,
                          Dataset_Text_BallCounting, Dataset_Text_KDE)
 from qdrant_helpers import qdrant
 from qdrant_sum_estimation_algorithm import (Combined, OurAlgorithm,
-                                             RandomSample,
-                                             SumEstimationAlgorithm, TopK)
+                                             RandomSample, TopK)
 from qdrant_sum_problem_settings import (BallCounting_Image, BallCounting_Text,
-                                         KDE_Image, KDE_Text, Softmax_Image,
-                                         SumProblemSetting)
+                                         KDE_Image, KDE_Text, Softmax_Image)
 
 # Hyperparameter domains
 k_values_our = [25, 50, 100, 200]
@@ -38,19 +36,6 @@ setting_dataset_mapping = {
     KDE_Text.__name__: Dataset_Text_KDE(spark, sc),
     BallCounting_Text.__name__: Dataset_Text_BallCounting(spark, sc)
 }
-
-
-@dataclass
-class Combination:
-    sum_problem_setting: SumProblemSetting
-    sum_estimation_algorithm: SumEstimationAlgorithm
-
-    setting_dataset: Dataset = None  # Initially optional
-    params: dict = None
-
-    def __post_init__(self):
-        self.setting_dataset = setting_dataset_mapping[self.sum_problem_setting.__name__]
-        self.param_suffix = "_".join(str(v) for v in self.params.values())
 
 
 # Pre-generate all combinations

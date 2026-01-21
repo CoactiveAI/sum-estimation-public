@@ -6,7 +6,7 @@ from config import settings
 experiment_results_path = settings.EXPERIMENT_RESULTS_PATH
 plot_format = "png"
 
-
+# TODO: make this into a function
 for combination in settings.TASK_DATA_COMBINATIONS:
     task = combination['task']
     data = combination['data']

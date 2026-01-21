@@ -7,7 +7,7 @@ from qdrant_client.http.models import (NamedVector, QuantizationSearchParams,
                                        SearchParams, SearchRequest)
 
 from config import settings
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
+from data_classes import EmbeddingObject, EmbeddingObjectWithSim
 
 qdrant_client_params = {
     "url": settings.QDRANT_HOST,
