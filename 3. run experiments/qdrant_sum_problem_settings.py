@@ -165,7 +165,7 @@ class SumProblemSetting:
 
 ########################################################
 
-class KDE_Image(SumProblemSetting):
+class Problem_Image_KDE(SumProblemSetting):
     def __init__(
         self,
         setting_dataset: Dataset,
@@ -197,7 +197,7 @@ class KDE_Image(SumProblemSetting):
         return f_vals_per_query
 
 
-class Softmax_Image(SumProblemSetting):
+class Problem_Image_Softmax(SumProblemSetting):
     def __init__(
         self,
         setting_dataset: Dataset,
@@ -229,7 +229,7 @@ class Softmax_Image(SumProblemSetting):
         return f_vals_per_query
 
 
-class BallCounting_Image(SumProblemSetting):
+class Problem_Image_BallCounting(SumProblemSetting):
     def __init__(
         self,
         setting_dataset: Dataset,
@@ -260,7 +260,7 @@ class BallCounting_Image(SumProblemSetting):
         return f_vals_per_query
 
 
-class KDE_Text(SumProblemSetting):
+class Problem_Text_KDE(SumProblemSetting):
     def __init__(
         self,
         setting_dataset: Dataset,
@@ -292,7 +292,7 @@ class KDE_Text(SumProblemSetting):
         return f_vals_per_query
 
 
-class BallCounting_Text(SumProblemSetting):
+class Problem_Text_BallCounting(SumProblemSetting):
     def __init__(
         self,
         setting_dataset: Dataset,

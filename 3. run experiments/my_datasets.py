@@ -33,7 +33,7 @@ class Dataset:
         """Load dataset item IDs (no embeddings needed) from Qdrant."""
         records = scroll_collection(
             self.collection_name,
-            n=settings.NUM_DATASET_ITEMS,
+            n=settings.NUM_DATASET_EMBEDDINGS,
             with_vectors=None,
         )
         return [EmbeddingObject(image_id=r.id) for r in records]

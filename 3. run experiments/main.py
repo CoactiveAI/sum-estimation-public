@@ -5,7 +5,7 @@ Usage
     python main.py
 
 Configuration via environment variables (see .env.example):
-    QDRANT_HOST, QDRANT_API_KEY, RESULTS_PATH, NUM_DATASET_ITEMS,
+    QDRANT_HOST, QDRANT_API_KEY, RESULTS_PATH, NUM_DATASET_EMBEDDINGS,
     NUM_QUERY_CANDIDATES
 """
 
@@ -24,8 +24,8 @@ from qdrant_helpers import qdrant
 from qdrant_sum_estimation_algorithm import (Combined, OurAlgorithm,
                                              RandomSample,
                                              SumEstimationAlgorithm, TopK)
-from qdrant_sum_problem_settings import (BallCounting_Image, BallCounting_Text,
-                                         KDE_Image, KDE_Text, Softmax_Image,
+from qdrant_sum_problem_settings import (Problem_Image_BallCounting, Problem_Text_BallCounting,
+                                         Problem_Image_KDE, Problem_Text_KDE, Problem_Image_Softmax,
                                          SumProblemSetting)
 
 # ---------------------------------------------------------------------------
@@ -48,11 +48,11 @@ sum_problem_settings = [
 # ---------------------------------------------------------------------------
 print("Loading datasets from Qdrant …")
 setting_dataset_mapping = {
-    KDE_Image.__name__: Dataset_Image_KDE(),
-    Softmax_Image.__name__: Dataset_Image_Softmax(),
-    BallCounting_Image.__name__: Dataset_Image_BallCounting(),
-    KDE_Text.__name__: Dataset_Text_KDE(),
-    BallCounting_Text.__name__: Dataset_Text_BallCounting(),
+    Problem_Image_KDE.__name__: Dataset_Image_KDE(),
+    Problem_Image_Softmax.__name__: Dataset_Image_Softmax(),
+    Problem_Image_BallCounting.__name__: Dataset_Image_BallCounting(),
+    Problem_Text_KDE.__name__: Dataset_Text_KDE(),
+    Problem_Text_BallCounting.__name__: Dataset_Text_BallCounting(),
 }
 print("Datasets loaded.")
 
@@ -98,10 +98,9 @@ os.makedirs(settings.RESULTS_PATH, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Main experiment loop
 # ---------------------------------------------------------------------------
-NUM_QUERIES = 100
 oversampling = 2.5
 
-for q in range(NUM_QUERIES):
+for q in range(settings.NUM_QUERY_CANDIDATES):
     current_level = q % 10
 
     # ------------------------------------------------------------------

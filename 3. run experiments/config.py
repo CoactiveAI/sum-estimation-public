@@ -22,7 +22,7 @@ class Settings:
 
     # How many dataset IDs to load from Qdrant for experiments.
     # Higher values make true-sum estimates more accurate but slow down computation.
-    NUM_DATASET_ITEMS = int(os.getenv("NUM_DATASET_ITEMS", "100000"))
+    NUM_DATASET_EMBEDDINGS = int(os.getenv("NUM_DATASET_EMBEDDINGS", "100000"))
 
     # Size of the pool from which random query vectors are drawn each run.
     NUM_QUERY_CANDIDATES = int(os.getenv("NUM_QUERY_CANDIDATES", "1000"))

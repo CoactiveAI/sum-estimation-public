@@ -60,7 +60,7 @@ RESULTS_PATH=./results
 # Dataset size trade-off
 # Higher = more accurate true-sum estimates, slower per-query computation.
 # ~100 000 is a good starting point for reproduction; increase for full-scale runs.
-NUM_DATASET_ITEMS=100000
+NUM_DATASET_EMBEDDINGS=100000
 
 # How many candidate query vectors to load into the random-query pool
 NUM_QUERY_CANDIDATES=1000
@@ -157,13 +157,13 @@ The experiments assume a Qdrant cluster with the following collections already p
 
 | Collection | Dataset | Encoder |
 |---|---|---|
-| `SEPub_OI_train8M_resnet_50` | Open Images (8M train) | ResNet-50 |
-| `SEPub_OI_train8M_clip_vit_normalised` | Open Images (8M train) | CLIP ViT-L14-336 |
-| `SEPub_AR_10M_bert` | Amazon Reviews (10M) | DistilBERT |
+| `open-images_resnet-50` | Open Images (8M train) | ResNet-50 |
+| `open-images_clip_vit_l14_336` | Open Images (8M train) | CLIP ViT-L14-336 |
+| `amazon-reviews_distilbert` | Amazon Reviews (10M) | DistilBERT |
 
 Each point must carry `level_0` … `level_9` payload fields (computed by `2. create qdrant cluster/store_levels.py`).
 
-For smaller-scale reproduction, set `NUM_DATASET_ITEMS` to a few thousand; the algorithms and relative rankings remain the same.
+For smaller-scale reproduction, set `NUM_DATASET_EMBEDDINGS` to a few thousand; the algorithms and relative rankings remain the same.
 
 ---
 
