@@ -1,11 +1,21 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 class Settings:
 
-    EXPERIMENT_RESULTS_PATH = "s3://coactive-ml-rnd/SumEstimationExperiments/github_results_july22_run3"
+    # Path to results produced by 3. run experiments/main.py
+    # Use a local path (./results) or an S3 path (s3://bucket/prefix)
+    EXPERIMENT_RESULTS_PATH = os.getenv("RESULTS_PATH", "./results")
+
     TASK_DATA_COMBINATIONS = [
-        {'task': 'kde', 'data': 'image'},
-        {'task': 'softmax', 'data': 'image'},
+        {'task': 'kde',           'data': 'image'},
+        {'task': 'softmax',       'data': 'image'},
         {'task': 'ball_counting', 'data': 'image'},
-        {'task': 'kde', 'data': 'text'},
+        {'task': 'kde',           'data': 'text'},
         {'task': 'ball_counting', 'data': 'text'},
     ]
 

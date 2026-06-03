@@ -1,9 +1,16 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
 class Settings:
 
-    QDRANT_HOST = "http://10.0.142.100:6333"
-    QDRANT_API_KEY = 'bVkKP7rBAV73if3rQfo7IdJUfNt6ixAxR7UrSKxNdGQBpdjuJX'
-    QDRANT_PORT = 443
-    QDRANT_TIMEOUT = 10000
+    QDRANT_HOST = os.environ["QDRANT_HOST"]
+    QDRANT_API_KEY = os.environ["QDRANT_API_KEY"]
+    QDRANT_PORT = int(os.getenv("QDRANT_PORT", "443"))
+    QDRANT_TIMEOUT = int(os.getenv("QDRANT_TIMEOUT", "10000"))
 
     COLLECTION_NAME = {
         "open-images_resnet-50": "SEPub_OI_train8M_resnet_50",
@@ -11,7 +18,14 @@ class Settings:
         "amazon-reviews_distilbert": "SEPub_AR_10M_bert"
     }
 
-    RESULTS_PATH = "s3://coactive-ml-rnd/SumEstimationExperiments/github_results_july22_run3"
+    RESULTS_PATH = os.getenv("RESULTS_PATH", "./results")
+
+    # How many dataset IDs to load from Qdrant for experiments.
+    # Higher values make true-sum estimates more accurate but slow down computation.
+    NUM_DATASET_EMBEDDINGS = int(os.getenv("NUM_DATASET_EMBEDDINGS", "100000"))
+
+    # Size of the pool from which random query vectors are drawn each run.
+    NUM_QUERY_CANDIDATES = int(os.getenv("NUM_QUERY_CANDIDATES", "1000"))
 
 
 settings = Settings()

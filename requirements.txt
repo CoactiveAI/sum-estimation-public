@@ -1,5 +1,9 @@
-# TODO: Put these all in 1 file
-torch
+numpy
+pandas
+pyarrow
 tqdm
-s3fs
+joblib
+matplotlib
+scipy
+python-dotenv
 qdrant-client==1.12.0
