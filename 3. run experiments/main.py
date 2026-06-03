@@ -1,7 +1,17 @@
-!pip install -r requirements.txt
+"""Run sum-estimation experiments and save results as Parquet files.
 
+Usage
+-----
+    python main.py
+
+Configuration via environment variables (see .env.example):
+    QDRANT_HOST, QDRANT_API_KEY, RESULTS_PATH, NUM_DATASET_EMBEDDINGS,
+    NUM_QUERY_CANDIDATES
+"""
+
+import os
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 from tqdm import tqdm
@@ -14,11 +24,13 @@ from qdrant_helpers import qdrant
 from qdrant_sum_estimation_algorithm import (Combined, OurAlgorithm,
                                              RandomSample,
                                              SumEstimationAlgorithm, TopK)
-from qdrant_sum_problem_settings import (BallCounting_Image, BallCounting_Text,
-                                         KDE_Image, KDE_Text, Softmax_Image,
+from qdrant_sum_problem_settings import (Problem_Image_BallCounting, Problem_Text_BallCounting,
+                                         Problem_Image_KDE, Problem_Text_KDE, Problem_Image_Softmax,
                                          SumProblemSetting)
 
-# Hyperparameter domains
+# ---------------------------------------------------------------------------
+# Hyperparameter grids
+# ---------------------------------------------------------------------------
 k_values_our = [25, 50, 100, 200]
 topk_values = [250, 500, 1000, 2000]
 random_values = [500, 1000, 2000, 5000, 10000, 20000]
@@ -28,176 +40,186 @@ sum_problem_settings = [
     Softmax_Image,
     BallCounting_Image,
     KDE_Text,
-    BallCounting_Text
+    BallCounting_Text,
 ]
 
+# ---------------------------------------------------------------------------
+# Load datasets (IDs + query pool from Qdrant – no local embedding files)
+# ---------------------------------------------------------------------------
+print("Loading datasets from Qdrant …")
 setting_dataset_mapping = {
-    KDE_Image.__name__: Dataset_Image_KDE(spark, sc), 
-    Softmax_Image.__name__: Dataset_Image_Softmax(spark, sc),
-    BallCounting_Image.__name__: Dataset_Image_BallCounting(spark, sc),
-    KDE_Text.__name__: Dataset_Text_KDE(spark, sc),
-    BallCounting_Text.__name__: Dataset_Text_BallCounting(spark, sc)
+    Problem_Image_KDE.__name__: Dataset_Image_KDE(),
+    Problem_Image_Softmax.__name__: Dataset_Image_Softmax(),
+    Problem_Image_BallCounting.__name__: Dataset_Image_BallCounting(),
+    Problem_Text_KDE.__name__: Dataset_Text_KDE(),
+    Problem_Text_BallCounting.__name__: Dataset_Text_BallCounting(),
 }
+print("Datasets loaded.")
 
-
+# ---------------------------------------------------------------------------
+# Build all (setting, algorithm, params) combinations
+# ---------------------------------------------------------------------------
 @dataclass
 class Combination:
-    sum_problem_setting: SumProblemSetting
-    sum_estimation_algorithm: SumEstimationAlgorithm
-
-    setting_dataset: Dataset = None  # Initially optional
-    params: dict = None
+    sum_problem_setting: type  # SumProblemSetting subclass
+    sum_estimation_algorithm: type  # SumEstimationAlgorithm subclass
+    params: dict = field(default_factory=dict)
 
     def __post_init__(self):
-        self.setting_dataset = setting_dataset_mapping[self.sum_problem_setting.__name__]
         self.param_suffix = "_".join(str(v) for v in self.params.values())
 
 
-# Pre-generate all combinations
-all_combos = []
+all_combos: list[Combination] = []
 
-for sum_problem_setting in sum_problem_settings:
-    # Our
+for setting_class in sum_problem_settings:
     for k in k_values_our:
-        all_combos.append(Combination(sum_problem_setting=sum_problem_setting, sum_estimation_algorithm=OurAlgorithm, params={'k':k}))
-
-    # Random
+        all_combos.append(Combination(setting_class, OurAlgorithm, {'k': k}))
     for r in random_values:
-        all_combos.append(Combination(sum_problem_setting=sum_problem_setting, sum_estimation_algorithm=RandomSample, params={'r':r}))
-
-    # TopK
+        all_combos.append(Combination(setting_class, RandomSample, {'r': r}))
     for k in topk_values:
-        all_combos.append(Combination(sum_problem_setting=sum_problem_setting, sum_estimation_algorithm=TopK, params={'k':k}))
-
-    # combined
+        all_combos.append(Combination(setting_class, TopK, {'k': k}))
     for k in topk_values:
         for r in random_values:
-            all_combos.append(Combination(sum_problem_setting=sum_problem_setting, sum_estimation_algorithm=Combined, params={'k':k, 'r':r}))
+            all_combos.append(Combination(setting_class, Combined, {'k': k, 'r': r}))
 
 random.shuffle(all_combos)
 
-################################################
+# ---------------------------------------------------------------------------
+# Result accumulators  (cleared after each write to bound memory usage)
+# ---------------------------------------------------------------------------
+results_sum_estimates  = {sc: [] for sc in sum_problem_settings}
+results_time_estimates = {sc: [] for sc in sum_problem_settings}
+results_true_sum       = {sc: [] for sc in sum_problem_settings}
+results_recall_exact   = {sc: [] for sc in sum_problem_settings}
+results_recall_qdrant  = {sc: [] for sc in sum_problem_settings}
 
-# Results dictionary
-results_sum_estimates = {setting: [] for setting in sum_problem_settings}
-results_time_estimates = {setting: [] for setting in sum_problem_settings}
-results_true_sum = {setting: [] for setting in sum_problem_settings}
-results_recall_exact = {setting: [] for setting in sum_problem_settings}
-results_recall_qdrant = {setting: [] for setting in sum_problem_settings}
+os.makedirs(settings.RESULTS_PATH, exist_ok=True)
 
-################################################
+# ---------------------------------------------------------------------------
+# Main experiment loop
+# ---------------------------------------------------------------------------
+oversampling = 2.5
 
-for q in range(100):
-    current_level = q%10
-    oversampling = 2.5
+for q in range(settings.NUM_QUERY_CANDIDATES):
+    current_level = q % 10
 
-    # Execute the loop
-    for combination in tqdm(all_combos):
+    # ------------------------------------------------------------------
+    # 1. Pick a random query vector for each setting class and build a
+    #    per-query dataset object.  All-scores and max-sims are cached on
+    #    the setting object so they are computed only once per (q, class).
+    # ------------------------------------------------------------------
+    query_setting_objs: dict[str, SumProblemSetting] = {}
 
-        # get info from Combination object
-        sum_problem_setting = combination.sum_problem_setting
-        sum_estimation_algorithm = combination.sum_estimation_algorithm
-        setting_dataset = combination.setting_dataset
+    for setting_class in sum_problem_settings:
+        base_dataset = setting_dataset_mapping[setting_class.__name__]
+        query_obj = random.choice(base_dataset.query_pool)
+
+        # Build dataset excluding the chosen query item
+        dataset = [obj for obj in base_dataset.dataset_embedding_objects
+                   if obj.image_id != query_obj.image_id]
+
+        query_dataset = base_dataset.copy()
+        query_dataset.query_embedding_objects = [query_obj]
+        query_dataset.dataset_embedding_objects = dataset
+
+        setting_obj = setting_class(query_dataset, qdrant, oversampling)
+        setting_obj.SetNewLevel(current_level)
+
+        # Pre-compute and cache all scores for this query (used by
+        # GetTrueEstimate and GetExactRecall across all algorithms)
+        print(f"  [q={q}] caching all-scores for {setting_class.__name__} …")
+        setting_obj._get_cached_all_scores()
+        setting_obj._get_cached_max_sims()
+
+        query_setting_objs[setting_class.__name__] = setting_obj
+
+    # ------------------------------------------------------------------
+    # 2. Run every algorithm combination, reusing the cached setting obj
+    # ------------------------------------------------------------------
+    for combination in tqdm(all_combos, desc=f"q={q}"):
+        setting_class = combination.sum_problem_setting
+        setting_obj = query_setting_objs[setting_class.__name__]
+
+        QUERY_ID = setting_obj.query_ids[0]
         params = combination.params
         param_suffix = combination.param_suffix
-        
-        # get info from Dataset child object
-        query_embedding_objects = setting_dataset.query_embedding_objects
-        dataset_embedding_objects = setting_dataset.dataset_embedding_objects
-        setting_params = setting_dataset.setting_params
+        setting_params = base_dataset.setting_params  # same for all queries
 
-        # select query and filter dataset
-        query_embedding_obj = random.choice(query_embedding_objects)
-        query_embedding = query_embedding_obj.embedding
-        QUERY_ID = query_embedding_obj.image_id        
-        DATASET = [obj for obj in dataset_embedding_objects if obj.image_id != QUERY_ID] # exclude query object from dataset
+        # Instantiate algorithm (runs Qdrant queries internally)
+        algo_obj: SumEstimationAlgorithm = combination.sum_estimation_algorithm(
+            sum_problem_setting=setting_obj,
+            params=params
+        )
+        method = algo_obj.name
 
-        # create new Dataset object with updated values
-        query_setting_dataset = setting_dataset.copy()
-        query_setting_dataset.query_embedding_objects = [query_embedding_obj]
-        query_setting_dataset.dataset_embedding_objects = DATASET
-        
-        # instantiate SumProblemSetting child object
-        sum_problem_setting_obj = sum_problem_setting(query_setting_dataset, qdrant, oversampling)
-        sum_problem_setting_obj.SetNewLevel(current_level)
+        # Estimates
+        sum_estimates = [algo_obj.GetEstimateForSettingParam(b)[0] for b in setting_params]
+        time_estimate = algo_obj.GetTimeEstimate()
+        true_sum = [algo_obj.GetTrueEstimate(b)[0] for b in setting_params]
 
-        # instantiate SumEstimationAlgorithm child object
-        sum_estimation_algorithm_obj = sum_estimation_algorithm(sum_problem_setting=sum_problem_setting_obj, params=params)
-        method = sum_estimation_algorithm_obj.name
-
-        # Calculate estimates ad true values
-        sum_estimates = [sum_estimation_algorithm_obj.GetEstimateForSettingParam(b)[0] for b in setting_params]
-        time_estimate = sum_estimation_algorithm_obj.GetTimeEstimate()
-        true_sum = [sum_estimation_algorithm_obj.GetTrueEstimate(b)[0] for b in setting_params]
+        # Recall (not applicable for random sampling)
+        recall_exact = None
+        recall_qdrant = None
         if method == 'our':
-            # TODO: Unblock this
-            # recall_exact = sum_estimation_algorithm_obj.GetExactRecall()[0]
-            recall_qdrant = sum_estimation_algorithm_obj.GetQdrantRecall()[0]            
+            recall_qdrant = algo_obj.GetQdrantRecall()[0]
         elif method != 'random':
-            recall_exact = sum_estimation_algorithm_obj.GetExactRecall()[0]
-            recall_qdrant = sum_estimation_algorithm_obj.GetQdrantRecall()[0]
+            recall_exact = algo_obj.GetExactRecall()[0]
+            recall_qdrant = algo_obj.GetQdrantRecall()[0]
 
         entry_name = f"{method}_{param_suffix}"
-       
+        QUERY_ID_filename = str(QUERY_ID).strip("/").replace("/", "_")
 
-        # Construct the results dictionaries
-        results_sum_estimates[sum_problem_setting].append(
-            {"method": entry_name, "query_id": QUERY_ID} | 
-            {str(param): estimate for param, estimate in zip(setting_params, sum_estimates)}
+        # Accumulate results
+        results_sum_estimates[setting_class].append(
+            {"method": entry_name, "query_id": QUERY_ID} |
+            {str(param): est for param, est in zip(setting_params, sum_estimates)}
         )
-
-        results_time_estimates[sum_problem_setting].append({
+        results_time_estimates[setting_class].append({
             "method": entry_name,
             "query_id": QUERY_ID,
             "time": time_estimate,
         })
-
-        results_true_sum[sum_problem_setting].append(
-            {"method": entry_name, "query_id": QUERY_ID} | 
-            {str(param): estimate for param, estimate in zip(setting_params, true_sum)}
+        results_true_sum[setting_class].append(
+            {"method": entry_name, "query_id": QUERY_ID} |
+            {str(param): ts for param, ts in zip(setting_params, true_sum)}
         )
 
-        if method == 'our': # Our results will have nested dictionaries
-            # TODO: Unblock this
-            # results_recall_exact[sum_problem_setting].extend([
-            #         {
-            #             "query_id": QUERY_ID, 
-            #             "k": params['k'],
-            #             "level": l,
-            #             "topk": topk
-            #         } for l, topk in recall_exact
-            # ])
-            results_recall_qdrant[sum_problem_setting].extend([
-                    {
-                        "query_id": QUERY_ID, 
-                        "k": params['k'],
-                        "level": l,
-                        "topk": topk
-                    } for l, topk in recall_qdrant
-            ])            
+        if method == 'our':
+            results_recall_qdrant[setting_class].extend([
+                {"query_id": QUERY_ID, "k": params['k'], "level": l, "topk": topk}
+                for l, topk in recall_qdrant
+            ])
         elif method != 'random':
-            results_recall_exact[sum_problem_setting].append({
-                    "query_id": QUERY_ID, 
-                    "k": params['k'],
-                    "level": recall_exact[0],
-                    "topk": recall_exact[1]                
+            results_recall_exact[setting_class].append({
+                "query_id": QUERY_ID,
+                "k": params['k'],
+                "level": recall_exact[0],
+                "topk": recall_exact[1],
             })
-            results_recall_qdrant[sum_problem_setting].append({
-                    "query_id": QUERY_ID, 
-                    "k": params['k'],
-                    "level": recall_qdrant[0],
-                    "topk": recall_qdrant[1]                
+            results_recall_qdrant[setting_class].append({
+                "query_id": QUERY_ID,
+                "k": params['k'],
+                "level": recall_qdrant[0],
+                "topk": recall_qdrant[1],
             })
 
-        QUERY_ID_filename = QUERY_ID.strip("/").replace("/", "_")
-        pd.DataFrame(results_sum_estimates[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_sum_estimates/{QUERY_ID_filename}.parquet")
-        pd.DataFrame(results_time_estimates[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_time_estimates/{QUERY_ID_filename}.parquet")
-        pd.DataFrame(results_true_sum[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_true_sum/{QUERY_ID_filename}.parquet")
-        pd.DataFrame(results_recall_exact[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_exact/{QUERY_ID_filename}.parquet")
-        pd.DataFrame(results_recall_qdrant[sum_problem_setting]).to_parquet(f"{settings.RESULTS_PATH}/{sum_problem_setting_obj.name}_recall_qdrant/{QUERY_ID_filename}.parquet")
+        # Write and clear accumulators each iteration to keep memory bounded
+        name = setting_obj.name
+        base_path = settings.RESULTS_PATH
 
-        results_sum_estimates[sum_problem_setting] = []
-        results_time_estimates[sum_problem_setting] = []
-        results_true_sum[sum_problem_setting] = []
-        results_recall_exact[sum_problem_setting] = []
-        results_recall_qdrant[sum_problem_setting] = []
+        pd.DataFrame(results_sum_estimates[setting_class]).to_parquet(
+            f"{base_path}/{name}_sum_estimates/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_time_estimates[setting_class]).to_parquet(
+            f"{base_path}/{name}_time_estimates/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_true_sum[setting_class]).to_parquet(
+            f"{base_path}/{name}_true_sum/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_recall_exact[setting_class]).to_parquet(
+            f"{base_path}/{name}_recall_exact/{QUERY_ID_filename}.parquet")
+        pd.DataFrame(results_recall_qdrant[setting_class]).to_parquet(
+            f"{base_path}/{name}_recall_qdrant/{QUERY_ID_filename}.parquet")
+
+        results_sum_estimates[setting_class]  = []
+        results_time_estimates[setting_class] = []
+        results_true_sum[setting_class]       = []
+        results_recall_exact[setting_class]   = []
+        results_recall_qdrant[setting_class]  = []
