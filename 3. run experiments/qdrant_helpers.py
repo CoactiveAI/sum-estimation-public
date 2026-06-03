@@ -1,5 +1,5 @@
 from time import sleep
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import numpy as np
 from qdrant_client import QdrantClient, models
@@ -11,7 +11,7 @@ from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
 
 qdrant_client_params = {
     "url": settings.QDRANT_HOST,
-    "api_key": settings.QDRANT_API_KEY,    
+    "api_key": settings.QDRANT_API_KEY,
     "port": settings.QDRANT_PORT,
     "timeout": settings.QDRANT_TIMEOUT
 }
@@ -31,9 +31,9 @@ max_levels_dict = {
 }
 
 collections_dict = {
-    settings.COLLECTION_NAME["open-images_resnet-50"]:{'vector_name': 'abs1', 'is_list_of_ids_uuids': True},
-    settings.COLLECTION_NAME["open-images_clip_vit_l14_336"]:{'vector_name': 'unit', 'is_list_of_ids_uuids': False},
-    settings.COLLECTION_NAME["amazon-reviews_distilbert"]:{'vector_name': 'abs', 'is_list_of_ids_uuids': True},    
+    settings.COLLECTION_NAME["open-images_resnet-50"]: {'vector_name': 'abs1', 'is_list_of_ids_uuids': True},
+    settings.COLLECTION_NAME["open-images_clip_vit_l14_336"]: {'vector_name': 'unit', 'is_list_of_ids_uuids': False},
+    settings.COLLECTION_NAME["amazon-reviews_distilbert"]: {'vector_name': 'abs', 'is_list_of_ids_uuids': True},
 }
 
 
@@ -71,7 +71,6 @@ def batch_qdrant_search(
     debug_tag: str = ""
 ):
     results = []
-    # for chunk in tqdm(range(0, len(queries), batch_chunk)):
     for chunk in range(0, len(queries), batch_chunk):
         for attempt in range(retries):
             try:
@@ -86,6 +85,40 @@ def batch_qdrant_search(
                     print(f"[ERROR {debug_tag}] {e}")
                 sleep(retry_sleep_sec)
     return results
+
+
+def scroll_collection(
+    collection_name: str,
+    n: int,
+    with_vectors: Optional[List[str]] = None,
+) -> List:
+    """Scroll a Qdrant collection to retrieve up to n records.
+
+    Args:
+        collection_name: Qdrant collection to scroll.
+        n: Maximum number of records to return.
+        with_vectors: List of named vectors to include (e.g. ['abs1']). Pass None
+                      to omit vectors (IDs only).
+
+    Returns:
+        List of ScoredPoint/Record objects up to length n.
+    """
+    items = []
+    offset = None
+    while len(items) < n:
+        batch_size = min(1000, n - len(items))
+        results, offset = qdrant.scroll(
+            collection_name=collection_name,
+            limit=batch_size,
+            with_vectors=with_vectors if with_vectors else False,
+            offset=offset,
+        )
+        if not results:
+            break
+        items.extend(results)
+        if offset is None:
+            break
+    return items
 
 
 def get_top_k_for_query(
@@ -168,7 +201,7 @@ def get_all_scores_for_query(
     vector_name: str,
     oversampling: float,
     fn_for_nn_sims_calc: Callable
-) -> List[float]:
+) -> List[EmbeddingObjectWithSim]:
     queries = [
         make_search_request(
             vector=qe,
