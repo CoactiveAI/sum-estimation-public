@@ -4,6 +4,12 @@ __pycache__/
 *.pyo
 .DS_Store
 results/
+# Generated embedding output (step 1); the .npy matrices can be tens of GB
+*.npy
+embeddings/*_ids.txt
+embeddings/*_manifest.json
+# Smoke-test output from 1. create_embeddings/test_generation.py
+embeddings/test_run/
 *.egg-info/
 dist/
 build/

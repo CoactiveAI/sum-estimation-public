@@ -1,4 +1,9 @@
 numpy
+torch
+torchvision
+transformers
+datasets
+pillow
 pandas
 pyarrow
 tqdm
