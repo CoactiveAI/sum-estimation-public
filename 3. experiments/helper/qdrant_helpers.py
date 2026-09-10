@@ -1,3 +1,13 @@
+"""Qdrant query helpers used by the problem settings and the algorithms.
+
+Same functions and signatures as before, with two changes:
+
+* the client is resolved at runtime by `init_client()` instead of being built at
+  import, so the experiments can run against cloud, a local server, or embedded;
+* `max_levels_dict` is loaded from what step 2 recorded rather than hard-coded, so
+  re-indexing a collection cannot leave stale level bounds behind.
+"""
+
 from time import sleep
 from typing import Callable, List, Optional
 
@@ -6,35 +16,37 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import (NamedVector, QuantizationSearchParams,
                                        SearchParams, SearchRequest)
 
-from config import settings
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
+from .config import settings
+from .max_levels import load_max_levels
+from .qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
 
-qdrant_client_params = {
-    "url": settings.QDRANT_HOST,
-    "api_key": settings.QDRANT_API_KEY,
-    "port": settings.QDRANT_PORT,
-    "timeout": settings.QDRANT_TIMEOUT
-}
-qdrant = QdrantClient(**qdrant_client_params)
+# Collection -> {level_i: max value present}, read from step 2's output.
+max_levels_dict = load_max_levels()
 
-
-max_levels_dict = {
-    settings.COLLECTION_NAME["open-images_resnet-50"]: {
-        f'level_{i}': v for i, v in enumerate([24, 24, 25, 22, 24, 22, 24, 24, 28, 25])
-    },
-    settings.COLLECTION_NAME["open-images_clip_vit_l14_336"]: {
-        f'level_{i}': v for i, v in enumerate([21, 26, 25, 24, 24, 25, 23, 25, 24, 22])
-    },
-    settings.COLLECTION_NAME["amazon-reviews_distilbert"]: {
-        f'level_{i}': v for i, v in enumerate([28, 23, 23, 23, 23, 27, 25, 24, 26, 22])
-    }
-}
-
+# Collection -> vector name and whether ids can be filtered with HasIdCondition.
 collections_dict = {
-    settings.COLLECTION_NAME["open-images_resnet-50"]: {'vector_name': 'abs1', 'is_list_of_ids_uuids': True},
-    settings.COLLECTION_NAME["open-images_clip_vit_l14_336"]: {'vector_name': 'unit', 'is_list_of_ids_uuids': False},
-    settings.COLLECTION_NAME["amazon-reviews_distilbert"]: {'vector_name': 'abs', 'is_list_of_ids_uuids': True},
+    settings.COLLECTION_NAME[key]: dict(config)
+    for key, config in settings.COLLECTIONS.items()
 }
+
+# Set by init_client(); every helper reads it through _client().
+qdrant: Optional[QdrantClient] = None
+
+
+def init_client(client: QdrantClient) -> QdrantClient:
+    """Install the client the helpers should use."""
+    global qdrant
+    qdrant = client
+    return qdrant
+
+
+def _client() -> QdrantClient:
+    if qdrant is None:
+        raise SystemExit(
+            "No Qdrant client configured. Call qdrant_helpers.init_client(...) "
+            "before running an experiment (main.py does this at startup)."
+        )
+    return qdrant
 
 
 def make_search_request(
@@ -74,7 +86,7 @@ def batch_qdrant_search(
     for chunk in range(0, len(queries), batch_chunk):
         for attempt in range(retries):
             try:
-                batch = qdrant.search_batch(
+                batch = _client().search_batch(
                     collection_name=collection_name,
                     requests=queries[chunk:chunk+batch_chunk],
                 )
@@ -92,22 +104,17 @@ def scroll_collection(
     n: int,
     with_vectors: Optional[List[str]] = None,
 ) -> List:
-    """Scroll a Qdrant collection to retrieve up to n records.
+    """Scroll a collection to retrieve up to n records, in storage order.
 
-    Args:
-        collection_name: Qdrant collection to scroll.
-        n: Maximum number of records to return.
-        with_vectors: List of named vectors to include (e.g. ['abs1']). Pass None
-                      to omit vectors (IDs only).
-
-    Returns:
-        List of ScoredPoint/Record objects up to length n.
+    Kept for inspection and debugging. Experiments sample with
+    `query_sampler.CollectionSampler` instead, because a scroll prefix is not a
+    uniform sample of the collection.
     """
     items = []
     offset = None
     while len(items) < n:
         batch_size = min(1000, n - len(items))
-        results, offset = qdrant.scroll(
+        results, offset = _client().scroll(
             collection_name=collection_name,
             limit=batch_size,
             with_vectors=with_vectors if with_vectors else False,

@@ -4,12 +4,12 @@ import numpy as np
 from qdrant_client import QdrantClient, models
 
 from my_datasets import Dataset
-from qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
-from qdrant_helpers import (batch_qdrant_search, collections_dict,
-                            get_all_scores_for_query,
-                            get_random_sample_for_query, get_top_k_for_query,
-                            get_top_k_with_level, make_search_request,
-                            max_levels_dict)
+from helper.qdrant_data_classes import EmbeddingObject, EmbeddingObjectWithSim
+from helper.qdrant_helpers import (batch_qdrant_search, collections_dict,
+                                   get_all_scores_for_query,
+                                   get_random_sample_for_query,
+                                   get_top_k_for_query, get_top_k_with_level,
+                                   make_search_request, max_levels_dict)
 
 
 class SumProblemSetting:
@@ -33,7 +33,13 @@ class SumProblemSetting:
         self.query_ids = [obj.image_id for obj in query_embedding_objects]
         self.query_embeddings = [obj.embedding for obj in query_embedding_objects]
         self.dataset_embedding_objects = dataset_embedding_objects
-        self.dataset_ids = [obj.image_id for obj in dataset_embedding_objects]
+        # The dataset supplies its ids when it has them (they are the same list
+        # every query, minus the query point), so this is not rebuilt per instance.
+        supplied = getattr(setting_dataset, "dataset_ids", None)
+        self.dataset_ids = (
+            supplied if supplied is not None
+            else [obj.image_id for obj in dataset_embedding_objects]
+        )
 
         self.collection_name = collection_name
         self.vector_name = collections_dict[collection_name]['vector_name']
@@ -47,7 +53,8 @@ class SumProblemSetting:
         # Per-query caches populated on first use
         self._cached_all_scores: Optional[List[List[EmbeddingObjectWithSim]]] = None
         self._cached_max_sims: Optional[List[float]] = None
-        self._cached_true_topk: Optional[List[List[EmbeddingObjectWithSim]]] = None
+        # k -> that top-k result, so a second k cannot be served the first's answer.
+        self._cached_true_topk: Optional[dict] = None
 
     # ------------------------------------------------------------------
     # Cached helpers
@@ -65,10 +72,16 @@ class SumProblemSetting:
         return self._cached_max_sims
 
     def _get_cached_true_topk(self, k: int = 5000) -> List[List[EmbeddingObjectWithSim]]:
-        """Compute and cache a large top-k result used as ground truth for recall."""
+        """Compute and cache a large top-k result used as ground truth for recall.
+
+        Keyed on `k`: caching without it would hand back a result of the wrong
+        length as soon as two different values were asked for.
+        """
         if self._cached_true_topk is None:
-            self._cached_true_topk = self.GetTopK(k)
-        return self._cached_true_topk
+            self._cached_true_topk = {}
+        if k not in self._cached_true_topk:
+            self._cached_true_topk[k] = self.GetTopK(k)
+        return self._cached_true_topk[k]
 
     # ------------------------------------------------------------------
     # Qdrant accessors
@@ -183,16 +196,16 @@ class Problem_Image_KDE(SumProblemSetting):
     def fn_for_nn_sims_calc(self, score: float) -> float:
         return -score**2
 
-    def f_vals(self, bandwidth: np.float64, selected_embedding_objects: List[List[EmbeddingObjectWithSim]] = None) -> List[List[np.float64]]:
+    def f_vals(self, bandwidth: np.float64, selected_embedding_objects: List[List[EmbeddingObjectWithSim]]) -> List[List[np.float64]]:
         f_vals_per_query = []
 
         nn_sims = self.GetNNSims(selected_embedding_objects)
         max_sims = self._get_cached_max_sims()
 
         for q_idx in range(self.N_q):
-            nn_sims_to_q_scaled = np.array(nn_sims[q_idx]) - max_sims[q_idx]
+            nn_sims_to_q_scaled = np.asarray(nn_sims[q_idx]) - max_sims[q_idx]
             f_vals = np.exp(nn_sims_to_q_scaled / (2 * (bandwidth**2)), dtype=np.float64)
-            f_vals_per_query.append(f_vals.tolist())
+            f_vals_per_query.append(f_vals)
 
         return f_vals_per_query
 
@@ -215,16 +228,16 @@ class Problem_Image_Softmax(SumProblemSetting):
     def fn_for_nn_sims_calc(self, score: float) -> float:
         return score
 
-    def f_vals(self, temperature: np.float64, selected_embedding_objects: List[List[EmbeddingObjectWithSim]] = None) -> List[List[np.float64]]:
+    def f_vals(self, temperature: np.float64, selected_embedding_objects: List[List[EmbeddingObjectWithSim]]) -> List[List[np.float64]]:
         f_vals_per_query = []
 
         nn_sims = self.GetNNSims(selected_embedding_objects)
         max_sims = self._get_cached_max_sims()
 
         for q_idx in range(self.N_q):
-            nn_sims_to_q_scaled = np.array(nn_sims[q_idx]) - max_sims[q_idx]
+            nn_sims_to_q_scaled = np.asarray(nn_sims[q_idx]) - max_sims[q_idx]
             f_vals = np.exp(nn_sims_to_q_scaled / temperature, dtype=np.float64)
-            f_vals_per_query.append(f_vals.tolist())
+            f_vals_per_query.append(f_vals)
 
         return f_vals_per_query
 
@@ -247,15 +260,15 @@ class Problem_Image_BallCounting(SumProblemSetting):
     def fn_for_nn_sims_calc(self, score: float) -> float:
         return -score
 
-    def f_vals(self, r: float = None, selected_embedding_objects: List[List[EmbeddingObjectWithSim]] = None) -> List[List[np.float64]]:
+    def f_vals(self, r: float, selected_embedding_objects: List[List[EmbeddingObjectWithSim]]) -> List[List[np.float64]]:
         f_vals_per_query = []
 
         nn_sims = self.GetNNSims(selected_embedding_objects)
 
         for q_idx in range(self.N_q):
-            nn_sims_to_q = np.abs(np.array(nn_sims[q_idx]))
-            f_vals = (nn_sims_to_q <= r).astype(int)
-            f_vals_per_query.append(f_vals.tolist())
+            nn_sims_to_q = np.abs(np.asarray(nn_sims[q_idx]))
+            f_vals = (nn_sims_to_q <= r).astype(np.uint8)
+            f_vals_per_query.append(f_vals)
 
         return f_vals_per_query
 
@@ -278,16 +291,16 @@ class Problem_Text_KDE(SumProblemSetting):
     def fn_for_nn_sims_calc(self, score: float) -> float:
         return -score**2
 
-    def f_vals(self, bandwidth: np.float64, selected_embedding_objects: List[List[EmbeddingObjectWithSim]] = None) -> List[List[np.float64]]:
+    def f_vals(self, bandwidth: np.float64, selected_embedding_objects: List[List[EmbeddingObjectWithSim]]) -> List[List[np.float64]]:
         f_vals_per_query = []
 
         nn_sims = self.GetNNSims(selected_embedding_objects)
         max_sims = self._get_cached_max_sims()
 
         for q_idx in range(self.N_q):
-            nn_sims_to_q_scaled = np.array(nn_sims[q_idx]) - max_sims[q_idx]
+            nn_sims_to_q_scaled = np.asarray(nn_sims[q_idx]) - max_sims[q_idx]
             f_vals = np.exp(nn_sims_to_q_scaled / (2 * (bandwidth**2)), dtype=np.float64)
-            f_vals_per_query.append(f_vals.tolist())
+            f_vals_per_query.append(f_vals)
 
         return f_vals_per_query
 
@@ -310,14 +323,14 @@ class Problem_Text_BallCounting(SumProblemSetting):
     def fn_for_nn_sims_calc(self, score: float) -> float:
         return -score
 
-    def f_vals(self, r: float = None, selected_embedding_objects: List[List[EmbeddingObjectWithSim]] = None) -> List[List[np.float64]]:
+    def f_vals(self, r: float, selected_embedding_objects: List[List[EmbeddingObjectWithSim]]) -> List[List[np.float64]]:
         f_vals_per_query = []
 
         nn_sims = self.GetNNSims(selected_embedding_objects)
 
         for q_idx in range(self.N_q):
-            nn_sims_to_q = np.abs(np.array(nn_sims[q_idx]))
-            f_vals = (nn_sims_to_q <= r).astype(int)
-            f_vals_per_query.append(f_vals.tolist())
+            nn_sims_to_q = np.abs(np.asarray(nn_sims[q_idx]))
+            f_vals = (nn_sims_to_q <= r).astype(np.uint8)
+            f_vals_per_query.append(f_vals)
 
         return f_vals_per_query

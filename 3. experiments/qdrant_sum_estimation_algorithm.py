@@ -4,10 +4,8 @@ from time import time
 
 import numpy as np
 
-from qdrant_data_classes import EmbeddingObject
+from helper.qdrant_data_classes import EmbeddingObject
 from qdrant_sum_problem_settings import SumProblemSetting
-
-MAX_RARITY_IN_VECTOR_DB = 40
 
 # k for the ground-truth top-k used in exact-recall computation
 EXACT_RECALL_K = 5000
