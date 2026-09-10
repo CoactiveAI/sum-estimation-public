@@ -44,7 +44,9 @@ class Settings:
     QDRANT_EMBEDDED_PATH = os.getenv("QDRANT_EMBEDDED_PATH", ":memory:")
 
     # Where step 1 (create_embeddings) wrote its .npy files.
-    EMBEDDINGS_DIR = os.getenv("EMBEDDINGS_DIR", "../embeddings/")
+    EMBEDDINGS_DIR = os.getenv("EMBEDDINGS_DIR") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "embeddings"
+    )
 
     # HNSW graph parameters used when creating a collection.
     HNSW_M = int(os.getenv("HNSW_M", "32"))

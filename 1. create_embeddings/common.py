@@ -38,6 +38,10 @@ from typing import Iterable, Iterator, Sequence, TypeVar
 
 import numpy as np
 import torch
+from dotenv import load_dotenv
+
+# So EMBEDDINGS_DIR can live in .env alongside the rest of the pipeline's settings.
+load_dotenv()
 
 #: Items encoded per forward pass. Small enough for a single mid-range GPU at
 #: CLIP ViT-L/14-336 resolution; raise it for text-only or CPU-bound runs.
@@ -48,9 +52,11 @@ DEFAULT_BATCH_SIZE = 256
 #: 10M-row run stays a few dozen files.
 DEFAULT_CHUNK_ROWS = 250_000
 
-#: Repo-root `embeddings/`, matching EMBEDDINGS_DIR in step 2. Absolute, so output
-#: lands in the same place no matter which directory a script is run from.
-DEFAULT_OUTPUT_DIR = os.path.join(
+#: Where generated vectors go. `EMBEDDINGS_DIR` is shared with steps 2 and 3, so
+#: setting it once points the whole pipeline at the same run - e.g.
+#: `EMBEDDINGS_DIR=../embeddings/50k_run`. Otherwise the repo-root `embeddings/`,
+#: resolved absolutely so output lands in the same place from any directory.
+DEFAULT_OUTPUT_DIR = os.getenv("EMBEDDINGS_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "embeddings"
 )
 
