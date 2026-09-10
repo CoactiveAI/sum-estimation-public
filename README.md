@@ -1,171 +1,133 @@
 # SumEstimation
 
-**SumEstimation** is a framework for efficiently estimating the sum of scoring functions over large-scale embedding datasets using a variety of sampling strategies. It targets scenarios where computing the exact sum over millions of vectors is too expensive and a high-quality approximation is sufficient.
-
-## Supported Methods
+**SumEstimation** estimates the sum of a scoring function over a large embedding
+dataset by sampling, for cases where the exact sum over millions of vectors is
+too expensive and a good approximation will do.
 
 | Method | Description |
 |---|---|
-| **OurAlgorithm** | Adaptive sampler that uses rarity-level structure in a Qdrant index |
+| **OurAlgorithm** | Adaptive sampler that exploits rarity-level structure in an HNSW index |
 | **TopK** | Sum over the nearest neighbours only |
-| **Random** | Uniform random sample, scaled to the full dataset size |
-| **Combined** | Hybrid: TopK + Random for the complement |
+| **Random** | Uniform random sample, scaled to the dataset size |
+| **Combined** | TopK plus a random sample of the complement |
 
-Each method is evaluated on five (task, data) combinations:
-- KDE / Softmax / Ball-counting on image embeddings (Open Images, ResNet-50, CLIP ViT-L14-336)
-- KDE / Ball-counting on text embeddings (Amazon Reviews, DistilBERT)
+Each is evaluated on five (task, data) combinations — KDE, softmax and
+ball-counting on image embeddings; KDE and ball-counting on text embeddings —
+over three collections:
 
----
+| Collection | Dataset | Encoder | Dim | Distance |
+|---|---|---|---|---|
+| `open-images_resnet-50` | Open Images | ResNet-50 | 2048 | Euclid |
+| `open-images_clip_vit_l14_336` | Open Images | CLIP ViT-L/14-336 | 768 | Dot (unit vectors) |
+| `amazon-reviews_distilbert` | Amazon Reviews 2023 | DistilBERT | 768 | Euclid |
+
+## The pipeline
+
+Four steps, each with its own README covering its flags, outputs and tests:
+
+| Step | Does | Reads | Writes |
+|---|---|---|---|
+| [1. create_embeddings](1.%20create_embeddings/) | encodes datasets into sharded `.npy` matrices | Hugging Face Hub | `embeddings/` |
+| [2. create_hnsw_index](2.%20create_hnsw_index/) | builds a Qdrant HNSW collection with rarity-level payloads | `embeddings/` | Qdrant, `hnsw_index/` |
+| [3. experiments](3.%20experiments/) | runs every sampler against random queries | Qdrant, `embeddings/`, `hnsw_index/` | `experiments_results/` |
+| [4. plots](4.%20plots/) | turns results into the paper's figures | `experiments_results/` | `plots/` |
 
 ## Prerequisites
 
-- Python 3.10+
-- A running **Qdrant** cluster pre-loaded with the embedding collections (see `2. create qdrant cluster/`)
-- The Qdrant cluster does **not** need to be on the same machine; embeddings are never downloaded locally
-
----
-
-## Installation
-
-```bash
-git clone https://github.com/your-org/sum-estimation-public.git
-cd sum-estimation-public
-pip install -r requirements.txt
-```
-
----
+- Python 3.9+
+- `pip install -r requirements.txt`
+- Somewhere to put the index. Steps 2 and 3 take `--qdrant`:
+  **`embedded`** (no server, no Docker — exact search, so it validates the
+  pipeline but not HNSW), **`docker`** (a local server, started for you) or
+  **`cloud`** (the cluster in `QDRANT_HOST`). See
+  [2. create_hnsw_index](2.%20create_hnsw_index/#where-the-index-runs).
 
 ## Configuration
-
-Copy the example environment file and fill in your values:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+`.env.example` documents every setting. The ones that span steps:
 
-```dotenv
-# Required – Qdrant connection
-QDRANT_HOST=http://your-qdrant-host:6333
-QDRANT_API_KEY=your-api-key
-
-# Optional – defaults shown
-QDRANT_PORT=443
-QDRANT_TIMEOUT=10000
-
-# Where to write result Parquet files (local path or s3://bucket/prefix)
-RESULTS_PATH=./results
-
-# Dataset size trade-off
-# Higher = more accurate true-sum estimates, slower per-query computation.
-# ~100 000 is a good starting point for reproduction; increase for full-scale runs.
-NUM_DATASET_EMBEDDINGS=100000
-
-# How many candidate query vectors to load into the random-query pool
-NUM_QUERY_CANDIDATES=1000
-```
-
-> **Security note**: `.env` is listed in `.gitignore` and must never be committed.
-
----
-
-## Running Experiments
-
-```bash
-cd "3. run experiments"
-python main.py
-```
-
-What happens:
-1. Dataset item IDs and a pool of query candidate vectors are loaded from Qdrant (no local files needed).
-2. For each of 100 experiment iterations a **random** query vector is drawn from the pool.
-3. All-scores (similarities of every dataset item to the query) are computed **once** per query and cached.
-4. Every algorithm × hyperparameter combination is evaluated and results are written to `RESULTS_PATH` as Parquet shards.
-
-### Result layout
-
-```
-results/
-  image_kde_sum_estimates/<query_id>.parquet
-  image_kde_time_estimates/<query_id>.parquet
-  image_kde_true_sum/<query_id>.parquet
-  image_kde_recall_exact/<query_id>.parquet
-  image_kde_recall_qdrant/<query_id>.parquet
-  image_softmax_*/...
-  image_ball_counting_*/...
-  text_kde_*/...
-  text_ball_counting_*/...
-```
-
----
-
-## Generating Plots
-
-### Step 1 – Combine shards
-
-```bash
-cd "4. plotting"
-python combine_dfs.py
-```
-
-This merges per-query Parquet shards into one file per result type (works with local paths and S3).
-
-### Step 2 – Plot
-
-```bash
-python plot_results.py      # error and time trade-off figures
-python plot_recalls.py      # recall analysis
-python plot_synthetic.py    # synthetic validation
-```
-
-PDF outputs are written to `4. plotting/plots/`.
-
----
-
-## Repository Structure
-
-```
-.
-├── .env.example                      ← copy to .env and fill in credentials
-├── requirements.txt
-├── 1. create_embeddings/             ← (optional) scripts for generating embeddings
-├── 2. create qdrant cluster/
-│   ├── qdrant_insert.py              ← create collections and insert vectors
-│   └── store_levels.py               ← compute and store rarity-level payloads
-├── 3. run experiments/
-│   ├── config.py                     ← reads settings from .env
-│   ├── main.py                       ← experiment entry point
-│   ├── my_datasets.py                ← dataset classes (load from Qdrant)
-│   ├── qdrant_helpers.py             ← Qdrant query helpers + scroll utility
-│   ├── qdrant_data_classes.py        ← EmbeddingObject, EmbeddingObjectWithSim
-│   ├── qdrant_sum_problem_settings.py← scoring functions per task
-│   └── qdrant_sum_estimation_algorithm.py ← OurAlgorithm, TopK, Random, Combined
-└── 4. plotting/
-    ├── config.py
-    ├── combine_dfs.py
-    ├── plot_results.py
-    ├── plot_recalls.py
-    └── plot_synthetic.py
-```
-
----
-
-## Reproducing Results
-
-The experiments assume a Qdrant cluster with the following collections already populated:
-
-| Collection | Dataset | Encoder |
+| Setting | Used by | Meaning |
 |---|---|---|
-| `open-images_resnet-50` | Open Images (8M train) | ResNet-50 |
-| `open-images_clip_vit_l14_336` | Open Images (8M train) | CLIP ViT-L14-336 |
-| `amazon-reviews_distilbert` | Amazon Reviews (10M) | DistilBERT |
+| `QDRANT_HOST`, `QDRANT_API_KEY` | 2, 3 | cloud cluster; leave empty for local |
+| `EMBEDDINGS_DIR` | 1, 2, 3 | where vectors live — one directory per run |
+| `HNSW_INDEX_DIR` | 2, 3 | per-collection `max_levels.json` |
+| `RESULTS_PATH` | 3, 4 | Parquet results |
+| `PLOTS_DIR` | 4 | figures |
 
-Each point must carry `level_0` … `level_9` payload fields (computed by `2. create qdrant cluster/store_levels.py`).
+Point `EMBEDDINGS_DIR` at one directory per experiment (e.g.
+`../embeddings/50k_run`) so all three steps that touch vectors agree on which
+run they mean. Step 3 refuses to start if the vectors and the indexed collection
+disagree.
 
-For smaller-scale reproduction, set `NUM_DATASET_EMBEDDINGS` to a few thousand; the algorithms and relative rankings remain the same.
+> `.env` is gitignored and must never be committed.
 
----
+## End to end
+
+```bash
+export EMBEDDINGS_DIR=../embeddings/50k_run
+
+cd "1. create_embeddings"
+python generate_amazon_reviews_distilbert.py --num-embeddings 50000
+python generate_open_images_resnet50.py --num-embeddings 50000
+python generate_open_images_clip_vit_l14_336.py --num-embeddings 50000
+
+cd "../2. create_hnsw_index"
+for c in amazon-reviews_distilbert open-images_resnet-50 open-images_clip_vit_l14_336; do
+    python qdrant_insert.py --collection "$c" --embeddings-prefix "$c" --qdrant docker
+done
+
+cd "../3. experiments"
+python main.py --num-dataset all
+
+cd "../4. plots"
+python combine_shards.py && python plot_results.py && python plot_recalls.py
+python plot_synthetic.py
+```
+
+Two things to size before a real run: the image encoders fetch Flickr URLs one
+image at a time (~2 images/sec, so 50k takes hours — a Hub mirror with embedded
+images avoids this), and `--random-values` must not exceed the dataset size.
+
+## Testing
+
+Every step has a smoke test. Steps 2-4 need no Qdrant server and no downloads —
+they use the embedded client and generate their own data, so they run in seconds:
+
+```bash
+python "2. create_hnsw_index/test_index.py"        # indexing, levels, ids
+python "3. experiments/tests/test_experiments.py"  # experiments end to end
+python "4. plots/tests/test_plots.py"              # statistics and every figure
+```
+
+Step 1's test drives the real encoders, so it downloads model weights and streams
+each dataset (a few minutes; `synthetic` alone needs no network):
+
+```bash
+python "1. create_embeddings/test_generation.py"            # all four generators
+python "1. create_embeddings/test_generation.py" synthetic   # just the offline one
+```
+
+`3. experiments/tests/` also holds tests for query sampling and for local scoring
+against Qdrant.
+
+## Layout
+
+```
+1. create_embeddings/   2. create_hnsw_index/   3. experiments/   4. plots/
+
+embeddings/             generated vectors             (gitignored)
+hnsw_index/             per-collection index metadata (gitignored)
+experiments_results/    Parquet results               (gitignored)
+plots/                  figures                       (committed)
+```
+
+## Citation
+
+If you use this repository, please cite the paper or contact us here.
 
 ## Contact
 
