@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .DS_Store
 results/
+experiments_results/
 # Generated embedding output (step 1); the .npy matrices can be tens of GB
 *.npy
 # Embeddings written by step 1
